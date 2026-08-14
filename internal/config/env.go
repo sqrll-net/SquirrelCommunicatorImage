@@ -37,9 +37,9 @@ type Config struct {
 /** Load reads configuration from environment variables with sensible defaults. */
 func Load() *Config {
 	return &Config{
-		StoragePath: envStr("STORAGE_PATH", "/var/lib/sqrll/media"),
+		StoragePath: envStr("STORAGE_PATH", "/var/data/sqrll/media"),
 		APIKey:      envStr("SQRLL_IMAGE_API_KEY", ""),
-		MaxDiskGB:   envInt64("MAX_DISK_GB", 200),
+		MaxDiskGB:   envInt64("MAX_DISK_GB", 100),
 		MaxRAMMB:    envInt64("MAX_RAM_MB", 1024),
 		MaxUploadMB: envInt64("MAX_UPLOAD_MB", 8),
 		Port:        envInt("PORT", 8083),

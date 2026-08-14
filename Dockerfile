@@ -13,7 +13,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/server /server
 
-VOLUME ["/var/lib/sqrll/media"]
+VOLUME ["/var/data/sqrll/media"]
 EXPOSE 8083
 
 ENTRYPOINT ["/server"]
