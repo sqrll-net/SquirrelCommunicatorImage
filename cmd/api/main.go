@@ -16,11 +16,11 @@ import (
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Zmień na konkretną domenę na produkcji
+		w.Header().Set("Access-Control-Allow-Origin", "*") // Restrict to a specific domain in production
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SQRLL-API-KEY")
 
-		// Przechwycenie zapytań OPTIONS (Preflight)
+		// Handle preflight OPTIONS requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -66,8 +66,8 @@ func main() {
 
 	// Routes
 	mux := http.NewServeMux()
-	mux.Handle("/api/internal/upload", uploadHandler)
-	mux.Handle("/images/", downloadHandler)
+	mux.Handle("/api/image/upload", uploadHandler)
+	mux.Handle("/api/image/", downloadHandler)
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

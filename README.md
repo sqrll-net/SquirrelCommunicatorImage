@@ -77,13 +77,13 @@ No partial writes on disk. Ever.
 
 ## Endpoints
 
-### POST /api/internal/upload
+### POST /api/image/upload
 
 Upload a file. Requires `X-SQRLL-API-KEY` header if configured.
 
 ```
 Request:
-  POST /api/internal/upload
+  POST /api/image/upload
   Headers: X-SQRLL-API-KEY: <key>
   Body: raw file bytes
 
@@ -108,13 +108,13 @@ Errors:
   500 - Storage write failure
 ```
 
-### GET /images/{sha256-hash}
+### GET /api/image/{sha256-hash}
 
 Download a file by its SHA-256 hash.
 
 ```
 Request:
-  GET /images/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  GET /api/image/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
 Response 200:
   Headers:

@@ -14,7 +14,7 @@ import (
 	"github.com/sqrll-net/squirrel-communicator-image/internal/storage"
 )
 
-/** UploadHandler handles POST /api/internal/upload for file ingestion. */
+/** UploadHandler handles POST /api/image/upload for file ingestion. */
 type UploadHandler struct {
 	Storage  *storage.Manager
 	Cache    *cache.Cache

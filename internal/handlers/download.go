@@ -10,7 +10,7 @@ import (
 	"github.com/sqrll-net/squirrel-communicator-image/internal/storage"
 )
 
-/** DownloadHandler handles GET /images/{id} for file retrieval. */
+/** DownloadHandler handles GET /api/image/{hash} for file retrieval. */
 type DownloadHandler struct {
 	Storage *storage.Manager
 	Cache   *cache.Cache
@@ -23,8 +23,8 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract file ID from URL path: /images/{id}
-	id := strings.TrimPrefix(r.URL.Path, "/images/")
+	// Extract file hash from URL path: /api/image/{hash}
+	id := strings.TrimPrefix(r.URL.Path, "/api/image/")
 	id = strings.TrimSuffix(id, "/")
 	if id == "" {
 		writeError(w, "missing file id", http.StatusBadRequest)
