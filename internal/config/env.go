@@ -3,9 +3,10 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
-/** AllowedMIMETypes for upload validation. Only these types pass the MIME check. */
+/** AllowedMIMETypes lists the MIME types accepted for upload. */
 var AllowedMIMETypes = map[string]bool{
 	"image/jpeg":      true,
 	"image/png":       true,
@@ -26,24 +27,43 @@ var AllowedMIMETypes = map[string]bool{
 
 /** Config holds all runtime configuration loaded from environment variables. */
 type Config struct {
-	StoragePath string
-	APIKey      string
-	MaxDiskGB   int64
-	MaxRAMMB    int64
-	MaxUploadMB int64
-	Port        int
+	StoragePath        string
+	MasterKey          string
+	AuthKeys           []string
+	KlipyAPIKey        string
+	MaxRequestsPerHour int
+	MaxDiskGB          int64
+	MaxRAMMB           int64
+	MaxUploadMB        int64
+	Port               int
 }
 
 /** Load reads configuration from environment variables with sensible defaults. */
 func Load() *Config {
 	return &Config{
-		StoragePath: envStr("STORAGE_PATH", "/var/data/sqrll/media"),
-		APIKey:      envStr("SQRLL_IMAGE_API_KEY", ""),
-		MaxDiskGB:   envInt64("MAX_DISK_GB", 100),
-		MaxRAMMB:    envInt64("MAX_RAM_MB", 1024),
-		MaxUploadMB: envInt64("MAX_UPLOAD_MB", 8),
-		Port:        envInt("PORT", 8083),
+		StoragePath:        envStr("STORAGE_PATH", "/var/data/sqrll/media"),
+		MasterKey:          envStr("SQRLL_IMAGE_API_KEY", ""),
+		AuthKeys:           envList("SQRLL_AUTH_KEYS"),
+		KlipyAPIKey:        envStr("SQRLL_KLIPY_API_KEY", ""),
+		MaxRequestsPerHour: envInt("MAX_REQUESTS_PER_HOUR", 100),
+		MaxDiskGB:          envInt64("MAX_DISK_GB", 100),
+		MaxRAMMB:           envInt64("MAX_RAM_MB", 1024),
+		MaxUploadMB:        envInt64("MAX_UPLOAD_MB", 8),
+		Port:               envInt("PORT", 8083),
 	}
+}
+
+/** envList reads a comma-separated list from the given variable. */
+func envList(name string) []string {
+	var keys []string
+	if v := os.Getenv(name); v != "" {
+		for _, k := range strings.Split(v, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
 }
 
 func envStr(key, fallback string) string {

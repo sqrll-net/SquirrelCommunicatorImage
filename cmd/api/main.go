@@ -1,27 +1,31 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/sqrll-net/squirrel-communicator-image/internal/auth"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/cache"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/config"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/handlers"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/storage"
 )
 
+/** corsMiddleware sets permissive CORS headers and answers preflight requests. */
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Restrict to a specific domain in production
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SQRLL-API-KEY")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SQRLL-API-KEY, X-SQRLL-IMAGE-API-KEY, X-API-Token")
 
 		// Handle preflight OPTIONS requests
-		if r.Method == "OPTIONS" {
+		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -37,6 +41,12 @@ func main() {
 	log.Printf("  Storage: %s (max %d GB)", cfg.StoragePath, cfg.MaxDiskGB)
 	log.Printf("  RAM cache: %d MB", cfg.MaxRAMMB)
 	log.Printf("  Max upload: %d MB", cfg.MaxUploadMB)
+	log.Printf("  Rate limit: %d req/hour/key", cfg.MaxRequestsPerHour)
+	if cfg.KlipyAPIKey != "" {
+		log.Printf("  GIF provider: configured")
+	} else {
+		log.Printf("  GIF provider: NOT configured (GIF endpoints return 503)")
+	}
 
 	// Convert config units to bytes
 	maxDiskBytes := cfg.MaxDiskGB * (1 << 30) // GB to bytes
@@ -52,22 +62,38 @@ func main() {
 		log.Fatalf("Storage init failed: %v", err)
 	}
 
+	// Initialize auth manager and load bootstrap keys
+	authMgr := auth.NewManager(cfg.MaxRequestsPerHour)
+	for _, k := range cfg.AuthKeys {
+		if err := authMgr.Add(k); err != nil {
+			log.Printf("Skipping bootstrap key: %v", err)
+		}
+	}
+	log.Printf("  Loaded %d bootstrap key(s)", authMgr.Count())
+
 	// Handlers
 	uploadHandler := &handlers.UploadHandler{
 		Storage:  store,
 		Cache:    c,
-		APIKey:   cfg.APIKey,
+		Auth:     authMgr,
 		MaxBytes: maxUploadBytes,
 	}
 	downloadHandler := &handlers.DownloadHandler{
 		Storage: store,
 		Cache:   c,
 	}
+	keyHandler := &handlers.KeyHandler{
+		Auth:      authMgr,
+		MasterKey: cfg.MasterKey,
+	}
+	gifsHandler := handlers.NewGifsHandler(authMgr, cfg.KlipyAPIKey, store, c)
 
 	// Routes
 	mux := http.NewServeMux()
 	mux.Handle("/api/image/upload", uploadHandler)
 	mux.Handle("/api/image/", downloadHandler)
+	mux.Handle("/api/key", keyHandler)
+	mux.Handle("/api/gifs/", gifsHandler)
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -76,19 +102,29 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Graceful shutdown
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           corsMiddleware(mux),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// Graceful shutdown: drain in-flight requests before exiting
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		sig := <-sigCh
-		log.Printf("Received signal %v, shutting down", sig)
-		os.Exit(0)
+		log.Printf("Received signal %v, draining connections", sig)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("Shutdown error: %v", err)
+		}
 	}()
 
-	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Listening on %s", addr)
-
-	if err := http.ListenAndServe(addr, corsMiddleware(mux)); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
 }

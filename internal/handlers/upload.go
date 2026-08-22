@@ -8,9 +8,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/sqrll-net/squirrel-communicator-image/internal/auth"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/cache"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/config"
+	"github.com/sqrll-net/squirrel-communicator-image/internal/sniff"
 	"github.com/sqrll-net/squirrel-communicator-image/internal/storage"
 )
 
@@ -18,7 +21,7 @@ import (
 type UploadHandler struct {
 	Storage  *storage.Manager
 	Cache    *cache.Cache
-	APIKey   string
+	Auth     *auth.Manager
 	MaxBytes int64
 }
 
@@ -26,6 +29,7 @@ type UploadHandler struct {
 type uploadResponse struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
+	Type   string `json:"type"`
 	Size   int64  `json:"size"`
 }
 
@@ -35,16 +39,26 @@ type errorResponse struct {
 	Code  int    `json:"code"`
 }
 
-/** ServeHTTP implements http.Handler with security checks, MIME validation, dedup, and storage. */
+/** ServeHTTP implements http.Handler with auth, rate limiting, content
+ *  validation, dedup, and storage. */
 func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Security: API key check
-	if h.APIKey != "" && r.Header.Get("X-SQRLL-API-KEY") != h.APIKey {
+	apiKey := r.Header.Get("X-SQRLL-API-KEY")
+
+	// Authenticate the key (constant-time hash lookup)
+	if !h.Auth.Authenticate(apiKey) {
 		writeError(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Per-key rate limit (sliding window)
+	if ok, retry := h.Auth.Allow(apiKey); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+		writeError(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
 
@@ -52,7 +66,6 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.MaxBytes)
 	defer r.Body.Close()
 
-	// Read entire body into memory (capped by MaxBytesReader)
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		var maxErr *http.MaxBytesError
@@ -69,8 +82,8 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// MIME magic byte detection (first 512 bytes)
-	mimeType := http.DetectContentType(data)
+	// Content validation via magic-byte sniffing
+	mimeType := sniff.Detect(data)
 	if !config.AllowedMIMETypes[mimeType] {
 		log.Printf("Rejected upload: detected MIME %s is not allowed", mimeType)
 		writeError(w, "unsupported file type", http.StatusUnsupportedMediaType)
@@ -81,12 +94,13 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.Sum256(data)
 	hashHex := hex.EncodeToString(hash[:])
 
-	// Dedup: check if file already exists on disk
+	// Dedup: file already on disk
 	if h.Storage.Exists(hashHex) {
-		h.Cache.Put(hashHex, data)
+		h.Cache.Put(hashHex, data, mimeType)
 		writeJSON(w, http.StatusOK, uploadResponse{
 			ID:     hashHex,
 			Status: "duplicate",
+			Type:   mimeType,
 			Size:   int64(len(data)),
 		})
 		return
@@ -100,11 +114,12 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Promote to hot cache
-	h.Cache.Put(hashHex, data)
+	h.Cache.Put(hashHex, data, mimeType)
 
 	writeJSON(w, http.StatusCreated, uploadResponse{
 		ID:     hashHex,
 		Status: "ok",
+		Type:   mimeType,
 		Size:   int64(len(data)),
 	})
 }

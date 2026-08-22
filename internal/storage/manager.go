@@ -130,28 +130,21 @@ func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 	return nil
 }
 
-/** Read loads a file from disk by hash. Returns (data, mimeType, error). */
-func (m *Manager) Read(hash string) ([]byte, string, error) {
+/** Read loads a file from disk by hash. MIME type is derived by the caller. */
+func (m *Manager) Read(hash string) ([]byte, error) {
 	m.mu.RLock()
 	ext, ok := m.extMap[hash]
 	m.mu.RUnlock()
 
 	if !ok {
-		return nil, "", fmt.Errorf("file not found: %s", hash)
+		return nil, fmt.Errorf("file not found: %s", hash)
 	}
 
-	filePath := filepath.Join(m.basePath, hash+ext)
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filepath.Join(m.basePath, hash+ext))
 	if err != nil {
-		return nil, "", fmt.Errorf("read file: %w", err)
+		return nil, fmt.Errorf("read file: %w", err)
 	}
-
-	mimeType := mime.TypeByExtension(ext)
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
-
-	return data, mimeType, nil
+	return data, nil
 }
 
 /** TotalSize returns the current disk usage in bytes. */
@@ -169,7 +162,7 @@ func mimeTypeToExt(mimeType string) string {
 	for _, e := range exts {
 		switch e {
 		case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tiff",
-			".mp4", ".webm", ".ogv", ".ogg", ".mp3", ".wav", ".pdf":
+			".mp4", ".webm", ".ogg", ".ogv", ".mp3", ".wav", ".pdf":
 			return e
 		}
 	}

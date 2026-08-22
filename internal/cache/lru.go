@@ -5,11 +5,12 @@ import (
 	"sync"
 )
 
-/** entry represents a single cached file: raw bytes and metadata. */
+/** entry represents a single cached file: raw bytes, MIME type, and metadata. */
 type entry struct {
-	key  string
-	data []byte
-	size int64
+	key      string
+	data     []byte
+	mimeType string
+	size     int64
 }
 
 /** Cache is a size-bounded in-memory LRU store. Eviction is based on insertion order.
@@ -31,32 +32,34 @@ func New(maxSize int64) *Cache {
 	}
 }
 
-/** Get retrieves a file from cache. Returns (nil, false) on miss.
+/** Get retrieves a file from cache. Returns (data, mimeType, ok).
  *  Uses RLock -- does NOT update LRU order for maximum read throughput. */
-func (c *Cache) Get(key string) ([]byte, bool) {
+func (c *Cache) Get(key string) ([]byte, string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	elem, ok := c.items[key]
 	if !ok {
-		return nil, false
+		return nil, "", false
 	}
-	return elem.Value.(*entry).data, true
+	ent := elem.Value.(*entry)
+	return ent.data, ent.mimeType, true
 }
 
-/** Put stores file bytes in cache, evicting old entries if the size limit is exceeded. */
-func (c *Cache) Put(key string, data []byte) {
+/** Put stores file bytes and MIME type in cache, evicting old entries if needed. */
+func (c *Cache) Put(key string, data []byte, mimeType string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	size := int64(len(data))
 
-	// Update existing entry: replace data and move to front
+	// Update existing entry: replace payload and move to front
 	if elem, ok := c.items[key]; ok {
 		c.lruList.MoveToFront(elem)
 		ent := elem.Value.(*entry)
 		c.currentSize -= ent.size
 		ent.data = data
+		ent.mimeType = mimeType
 		ent.size = size
 		c.currentSize += size
 		c.evictLocked()
@@ -64,7 +67,7 @@ func (c *Cache) Put(key string, data []byte) {
 	}
 
 	// Insert new entry at front
-	ent := &entry{key: key, data: data, size: size}
+	ent := &entry{key: key, data: data, mimeType: mimeType, size: size}
 	elem := c.lruList.PushFront(ent)
 	c.items[key] = elem
 	c.currentSize += size
