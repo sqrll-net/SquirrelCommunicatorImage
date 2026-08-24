@@ -4,7 +4,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 
-	"github.com/sqrll-net/squirrel-communicator-image/internal/auth"
+	"sqrll.net/squirrel-communicator-image/internal/auth"
 )
 
 /** KeyHandler manages API key registration and revocation via S2S admin endpoints. */

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sqrll-net/squirrel-communicator-image/internal/cache"
+	"sqrll.net/squirrel-communicator-image/internal/cache"
 )
 
 /** Manager handles disk-level file operations: boot scan, writes, reads, quota. */

@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sqrll-net/squirrel-communicator-image/internal/auth"
-	"github.com/sqrll-net/squirrel-communicator-image/internal/cache"
-	"github.com/sqrll-net/squirrel-communicator-image/internal/config"
-	"github.com/sqrll-net/squirrel-communicator-image/internal/handlers"
-	"github.com/sqrll-net/squirrel-communicator-image/internal/storage"
+	"sqrll.net/squirrel-communicator-image/internal/auth"
+	"sqrll.net/squirrel-communicator-image/internal/cache"
+	"sqrll.net/squirrel-communicator-image/internal/config"
+	"sqrll.net/squirrel-communicator-image/internal/handlers"
+	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
 /** corsMiddleware sets permissive CORS headers and answers preflight requests. */
