@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -102,7 +103,9 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	addr := fmt.Sprintf(":%d", cfg.Port)
+	// Bind address: SQRLL_IMAGE_SERVICE_URL (empty = all interfaces) : SQRLL_IMAGE_PORT.
+	// net.JoinHostPort handles IPv6 literals (adds brackets) and empty host correctly.
+	addr := net.JoinHostPort(cfg.ServiceURL, strconv.Itoa(cfg.Port))
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           corsMiddleware(mux),

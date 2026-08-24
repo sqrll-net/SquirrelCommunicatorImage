@@ -31,6 +31,7 @@ type Config struct {
 	MasterKey          string
 	AuthKeys           []string
 	KlipyAPIKey        string
+	ServiceURL         string
 	MaxRequestsPerHour int
 	MaxDiskGB          int64
 	MaxRAMMB           int64
@@ -45,11 +46,12 @@ func Load() *Config {
 		MasterKey:          envStr("SQRLL_IMAGE_API_KEY", ""),
 		AuthKeys:           envList("SQRLL_AUTH_KEYS"),
 		KlipyAPIKey:        envStr("SQRLL_KLIPY_API_KEY", ""),
+		ServiceURL:         envStr("SQRLL_IMAGE_SERVICE_URL", ""),
 		MaxRequestsPerHour: envInt("MAX_REQUESTS_PER_HOUR", 100),
 		MaxDiskGB:          envInt64("MAX_DISK_GB", 100),
 		MaxRAMMB:           envInt64("MAX_RAM_MB", 1024),
 		MaxUploadMB:        envInt64("MAX_UPLOAD_MB", 8),
-		Port:               envInt("PORT", 8083),
+		Port:               envInt("SQRLL_IMAGE_PORT", 8083),
 	}
 }
 

@@ -247,17 +247,18 @@ Response 200:
 
 ## Environment Variables
 
-| Variable                | Default                   | Description                              |
-|-------------------------|---------------------------|------------------------------------------|
-| `STORAGE_PATH`          | `/var/data/sqrll/media`   | File storage directory                   |
-| `SQRLL_IMAGE_API_KEY`   | (empty = disabled)        | Admin key for key management endpoints   |
-| `SQRLL_AUTH_KEYS`       | (empty)                   | Comma-separated bootstrap API keys       |
-| `SQRLL_KLIPY_API_KEY`   | (empty = disabled)        | KLIPY app key for GIF endpoints (503 if empty) |
-| `MAX_REQUESTS_PER_HOUR` | `100`                     | Per-key rate limit (hourly window)       |
-| `MAX_DISK_GB`           | `100`                     | Disk quota in GB                         |
-| `MAX_RAM_MB`            | `1024`                    | RAM cache limit in MB                    |
-| `MAX_UPLOAD_MB`         | `8`                       | Max single upload size                   |
-| `PORT`                  | `8083`                    | HTTP listen port                         |
+| Variable                   | Default                  | Description                                         |
+|----------------------------|--------------------------|-----------------------------------------------------|
+| `STORAGE_PATH`             | `/var/data/sqrll/media`  | File storage directory                              |
+| `SQRLL_IMAGE_SERVICE_URL`  | (empty = all interfaces) | Address to bind the HTTP server to                 |
+| `SQRLL_IMAGE_PORT`         | `8083`                   | HTTP listen port                                    |
+| `SQRLL_IMAGE_API_KEY`      | (empty = disabled)       | Admin key for key management endpoints              |
+| `SQRLL_AUTH_KEYS`          | (empty)                  | Comma-separated bootstrap API keys                  |
+| `SQRLL_KLIPY_API_KEY`      | (empty = disabled)       | KLIPY app key for GIF endpoints (503 if empty)     |
+| `MAX_REQUESTS_PER_HOUR`    | `100`                    | Per-key rate limit (hourly window)                  |
+| `MAX_DISK_GB`              | `100`                    | Disk quota in GB                                    |
+| `MAX_RAM_MB`               | `1024`                   | RAM cache limit in MB                               |
+| `MAX_UPLOAD_MB`            | `8`                      | Max single upload size                              |
 
 ## Allowed File Types
 
@@ -313,6 +314,9 @@ docker build -t sqrll-image .
 docker run -p 8083:8083 -v /data/media:/var/data/sqrll/media \
   -e SQRLL_IMAGE_API_KEY=... -e SQRLL_AUTH_KEYS=... -e SQRLL_KLIPY_API_KEY=... sqrll-image
 ```
+
+If you change `SQRLL_IMAGE_PORT` inside the container, the `-p` mapping must match
+it (e.g. `SQRLL_IMAGE_PORT=9090` requires `-p 9090:9090`).
 
 ## Key Properties
 
