@@ -2,7 +2,6 @@ package sniff
 
 import (
 	"bytes"
-	"strings"
 )
 
 // Detect returns the MIME type of data by inspecting leading magic bytes.
@@ -57,21 +56,28 @@ func Detect(data []byte) string {
 	return "application/octet-stream"
 }
 
-// looksLikeSVG reports whether data begins with an <svg> root or an XML
-// declaration immediately followed by an <svg> element.
+// looksLikeSVG reports whether data begins with an <svg> root element, either
+// directly or immediately after an XML declaration. It requires <svg> to be the
+// root element — merely containing "<svg" somewhere later is not sufficient.
 func looksLikeSVG(data []byte) bool {
 	if len(data) > 1024 {
 		data = data[:1024]
 	}
 
 	s := bytes.TrimLeft(data, " \t\r\n\xef\xbb\xbf")
-	lower := strings.ToLower(string(s))
+	lower := bytes.ToLower(s)
 
-	if strings.HasPrefix(lower, "<svg") {
+	if bytes.HasPrefix(lower, []byte("<svg")) {
 		return true
 	}
-	if strings.HasPrefix(lower, "<?xml") {
-		return strings.Contains(lower, "<svg")
+	if !bytes.HasPrefix(lower, []byte("<?xml")) {
+		return false
 	}
-	return false
+	// Skip the XML declaration and any whitespace to find the root element.
+	end := bytes.Index(lower, []byte("?>"))
+	if end == -1 {
+		return false
+	}
+	root := bytes.TrimLeft(lower[end+2:], " \t\r\n")
+	return bytes.HasPrefix(root, []byte("<svg"))
 }

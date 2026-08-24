@@ -10,11 +10,15 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"sqrll.net/squirrel-communicator-image/internal/cache"
 )
+
+// ErrDiskQuotaExceeded is returned when a write would exceed the configured disk quota.
+var ErrDiskQuotaExceeded = errors.New("disk quota exceeded")
 
 // Manager handles disk-level file operations: boot scan, writes, reads, quota.
 type Manager struct {
@@ -23,7 +27,7 @@ type Manager struct {
 	totalSize atomic.Int64      // current disk usage in bytes
 	extMap    map[string]string // hash -> file extension (e.g. ".png")
 	cache     *cache.Cache
-	mu        sync.RWMutex // protects extMap and serializes writes
+	mu        sync.RWMutex // protects extMap
 }
 
 // New creates a Storage Manager, scans the base path on startup to rebuild state.
@@ -47,7 +51,8 @@ func New(basePath string, maxSize int64, c *cache.Cache) (*Manager, error) {
 	return m, nil
 }
 
-// bootScan walks the storage directory to rebuild the extension map and total size.
+// bootScan walks the storage directory to rebuild the extension map and total
+// size, and deletes any orphaned temp files left by an unclean shutdown.
 func (m *Manager) bootScan() error {
 	return filepath.WalkDir(m.basePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -57,12 +62,24 @@ func (m *Manager) bootScan() error {
 			return nil
 		}
 
+		filename := filepath.Base(path)
+
+		// Clean up incomplete temp files (hash.ext.tmp.suffix) left by a crash
+		// between write and rename. They are never referenced by extMap.
+		if strings.Contains(filename, ".tmp.") {
+			if err := os.Remove(path); err != nil {
+				log.Printf("cleanup orphaned temp file %s: %v", filename, err)
+			} else {
+				log.Printf("removed orphaned temp file %s", filename)
+			}
+			return nil
+		}
+
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
 
-		filename := filepath.Base(path)
 		ext := filepath.Ext(filename)
 		hash := filename[:len(filename)-len(ext)]
 
@@ -89,25 +106,32 @@ func (m *Manager) Exists(hash string) bool {
 	return err == nil
 }
 
-// Write persists file bytes to disk. Serialized via mutex to prevent races on quota/extMap.
-// Returns nil if the file already exists (dedup).
+// Write persists file bytes to disk. The quota check and extension-map updates
+// are synchronized, but the slow temp-write + rename happens outside the lock
+// so different files can be written concurrently. Returns nil if the file
+// already exists (dedup).
 func (m *Manager) Write(hash string, data []byte, mimeType string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	ext := mimeTypeToExt(mimeType)
+	size := int64(len(data))
 
-	// Re-check under lock in case another goroutine wrote it
-	if _, ok := m.extMap[hash]; ok {
+	// Fast-path dedup without blocking concurrent writes to other files.
+	m.mu.RLock()
+	_, exists := m.extMap[hash]
+	m.mu.RUnlock()
+	if exists {
 		return nil
 	}
 
-	size := int64(len(data))
-
-	// Quota check
-	if m.totalSize.Load()+size > m.maxSize {
-		return errors.New("disk quota exceeded")
+	// Reserve quota atomically. Released on any failure path below via defer.
+	if !m.reserveQuota(size) {
+		return ErrDiskQuotaExceeded
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			m.totalSize.Add(-size)
+		}
+	}()
 
 	filePath := filepath.Join(m.basePath, hash+ext)
 	suffix, err := randomSuffix(8)
@@ -116,22 +140,45 @@ func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 	}
 	tmpPath := filePath + ".tmp." + suffix
 
-	// Write to temp file first
+	// Write to temp file first (I/O outside the lock).
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("write temp file: %w", err)
 	}
 
-	// Atomic rename into place
+	// Atomic rename into place.
 	if err := os.Rename(tmpPath, filePath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 
+	// Commit bookkeeping. Re-check under lock in case a concurrent writer
+	// committed the same hash first; content is identical so the overwrite is
+	// harmless, but the quota must not be double-counted.
+	m.mu.Lock()
+	if _, ok := m.extMap[hash]; ok {
+		m.mu.Unlock()
+		return nil // our reservation is released by the deferred cleanup
+	}
 	m.extMap[hash] = ext
-	m.totalSize.Add(size)
+	m.mu.Unlock()
 
+	committed = true
 	log.Printf("Written: %s (%d bytes, total: %.2f GB)", hash+ext, size, float64(m.totalSize.Load())/(1<<30))
 	return nil
+}
+
+// reserveQuota atomically reserves size bytes against the disk quota, returning
+// false if the write would exceed maxSize.
+func (m *Manager) reserveQuota(size int64) bool {
+	for {
+		cur := m.totalSize.Load()
+		if cur+size > m.maxSize {
+			return false
+		}
+		if m.totalSize.CompareAndSwap(cur, cur+size) {
+			return true
+		}
+	}
 }
 
 // Read loads a file from disk by hash. MIME type is derived by the caller.

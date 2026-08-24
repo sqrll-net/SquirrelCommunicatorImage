@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -36,8 +35,8 @@ type GifsHandler struct {
 	Storage  *storage.Manager
 	Cache    *cache.Cache
 
-	klipy   *http.Client // KLIPY API calls (12s timeout)
-	fetcher *http.Client // remote GIF fetch (25s timeout, no redirects)
+	klipy   *http.Client // KLIPY API calls (12s timeout, no redirects)
+	fetcher *http.Client // remote GIF fetch (25s timeout, no redirects, SSRF-guarded dial)
 }
 
 // NewGifsHandler builds a GifsHandler with its two HTTP clients.
@@ -47,12 +46,24 @@ func NewGifsHandler(authMgr *auth.Manager, klipyKey string, store *storage.Manag
 		KlipyKey: klipyKey,
 		Storage:  store,
 		Cache:    c,
-		klipy:    &http.Client{Timeout: klipyTimeout},
+		klipy: &http.Client{
+			Timeout: klipyTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// The KLIPY key is embedded in the URL path; never follow
+				// redirects (which would set a Referer header) so the key
+				// cannot leak to a third party.
+				return http.ErrUseLastResponse
+			},
+		},
 		fetcher: &http.Client{
 			Timeout: fetchTimeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// Do not follow redirects: a redirect could bypass the SSRF host check.
 				return http.ErrUseLastResponse
+			},
+			Transport: &http.Transport{
+				// Dial-time SSRF guard (single DNS lookup) to defeat DNS rebinding.
+				DialContext: publicDialer,
 			},
 		},
 	}
@@ -152,7 +163,8 @@ func (h *GifsHandler) handleFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SSRF guard: only public hosts.
+	// SSRF guard: only public hosts. The dialer re-validates at connect time
+	// (single lookup) to close the DNS-rebinding window.
 	if !isPublicHost(u.Hostname()) {
 		writeError(w, "invalid host", http.StatusBadRequest)
 		return
@@ -267,21 +279,6 @@ func klipyGet(key, path string, query url.Values, client *http.Client) ([]byte, 
 		return nil, fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
 	return body, nil
-}
-
-// isPublicHost reports whether a hostname resolves only to public IPs.
-func isPublicHost(host string) bool {
-	addrs, err := net.LookupIP(host)
-	if err != nil || len(addrs) == 0 {
-		return false
-	}
-	for _, ip := range addrs {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
-			return false
-		}
-	}
-	return true
 }
 
 // clampInt parses s as an int clamped to [min, max], falling back to def when empty/invalid.

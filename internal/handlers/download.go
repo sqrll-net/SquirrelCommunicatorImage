@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"sqrll.net/squirrel-communicator-image/internal/cache"
+	"sqrll.net/squirrel-communicator-image/internal/singleflight"
 	"sqrll.net/squirrel-communicator-image/internal/sniff"
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
@@ -15,9 +16,17 @@ import (
 type DownloadHandler struct {
 	Storage *storage.Manager
 	Cache   *cache.Cache
+	Load    *singleflight.Group // coalesces concurrent cold-path loads
 }
 
-// ServeHTTP implements http.Handler. Checks RAM cache first (RLock), falls back to disk.
+// loadedFile is the result of a coalesced cold-path disk read.
+type loadedFile struct {
+	data []byte
+	mime string
+}
+
+// ServeHTTP implements http.Handler. Checks RAM cache first (RLock), falls back
+// to a singleflight-coalesced disk read.
 func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -36,19 +45,28 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var mimeType string
 	var fromCache bool
 
-	// Hot path: RAM cache (RLock, no LRU mutation)
+	// Hot path: RAM cache (RLock, no LRU mutation).
 	if d, mt, ok := h.Cache.Get(id); ok {
 		data, mimeType, fromCache = d, mt, true
 	} else {
-		// Cold path: read from disk and sniff the content type
-		d, err := h.Storage.Read(id)
+		// Cold path: coalesce concurrent misses on the same file so the disk
+		// read and cache promotion happen exactly once.
+		v, err, _ := h.Load.Do(id, func() (interface{}, error) {
+			d, err := h.Storage.Read(id)
+			if err != nil {
+				return nil, err
+			}
+			mt := sniff.Detect(d)
+			h.Cache.Put(id, d, mt)
+			return &loadedFile{data: d, mime: mt}, nil
+		})
 		if err != nil {
 			log.Printf("Download miss: %v", err)
 			writeError(w, "file not found", http.StatusNotFound)
 			return
 		}
-		data = d
-		mimeType = sniff.Detect(data)
+		lf := v.(*loadedFile)
+		data, mimeType = lf.data, lf.mime
 	}
 
 	setDownloadHeaders(w, mimeType)
@@ -60,12 +78,6 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-
-	// Promote to hot cache after the response is sent, so eviction
-	// never delays the client.
-	if !fromCache {
-		h.Cache.Put(id, data, mimeType)
-	}
 }
 
 // setDownloadHeaders applies anti-injection headers and forces risky types to download.

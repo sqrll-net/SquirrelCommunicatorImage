@@ -13,8 +13,9 @@ type entry struct {
 	size     int64
 }
 
-// Cache is a size-bounded in-memory LRU store. Eviction is based on insertion order.
-// Reads use RLock for maximum concurrency; only writes mutate the LRU list.
+// Cache is a size-bounded in-memory LRU store. Reads use RLock for concurrency
+// and promote hits to the MRU position on a best-effort basis; eviction drops
+// the least-recently-used entry.
 type Cache struct {
 	mu          sync.RWMutex
 	items       map[string]*list.Element
@@ -33,17 +34,28 @@ func New(maxSize int64) *Cache {
 }
 
 // Get retrieves a file from cache. Returns (data, mimeType, ok).
-// Uses RLock -- does NOT update LRU order for maximum read throughput.
+// Reads use RLock for throughput; on a hit it best-effort promotes the entry
+// to the MRU position so hot files are not evicted before newer uploads. The
+// promotion is skipped when the write lock is contended.
 func (c *Cache) Get(key string) ([]byte, string, bool) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	elem, ok := c.items[key]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, "", false
 	}
 	ent := elem.Value.(*entry)
-	return ent.data, ent.mimeType, true
+	data, mimeType := ent.data, ent.mimeType
+	c.mu.RUnlock()
+
+	// Best-effort recency promotion. MoveToFront is a no-op if the entry was
+	// evicted in the meantime, so a stale element pointer is safe here.
+	if c.mu.TryLock() {
+		c.lruList.MoveToFront(elem)
+		c.mu.Unlock()
+	}
+
+	return data, mimeType, true
 }
 
 // Put stores file bytes and MIME type in cache, evicting old entries if needed.

@@ -27,31 +27,39 @@ var AllowedMIMETypes = map[string]bool{
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
-	StoragePath        string
-	MasterKey          string
-	AuthKeys           []string
-	KlipyAPIKey        string
-	ServiceURL         string
-	MaxRequestsPerHour int
-	MaxDiskGB          int64
-	MaxRAMMB           int64
-	MaxUploadMB        int64
-	Port               int
+	StoragePath         string
+	MasterKey           string
+	AuthKeys            []string
+	KlipyAPIKey         string
+	ServiceURL          string
+	CORSOrigins         []string
+	MaxRequestsPerHour  int
+	MaxDiskGB           int64
+	MaxRAMMB            int64
+	MaxUploadMB         int64
+	Port                int
+	ReadTimeoutSeconds  int
+	WriteTimeoutSeconds int
+	IdleTimeoutSeconds  int
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	return &Config{
-		StoragePath:        envStr("STORAGE_PATH", "/var/data/sqrll/media"),
-		MasterKey:          envStr("SQRLL_IMAGE_API_KEY", ""),
-		AuthKeys:           envList("SQRLL_AUTH_KEYS"),
-		KlipyAPIKey:        envStr("SQRLL_KLIPY_API_KEY", ""),
-		ServiceURL:         envStr("SQRLL_IMAGE_SERVICE_URL", ""),
-		MaxRequestsPerHour: envInt("MAX_REQUESTS_PER_HOUR", 100),
-		MaxDiskGB:          envInt64("MAX_DISK_GB", 100),
-		MaxRAMMB:           envInt64("MAX_RAM_MB", 1024),
-		MaxUploadMB:        envInt64("MAX_UPLOAD_MB", 8),
-		Port:               envInt("SQRLL_IMAGE_PORT", 8083),
+		StoragePath:         envStr("STORAGE_PATH", "/var/data/sqrll/media"),
+		MasterKey:           envStr("SQRLL_IMAGE_API_KEY", ""),
+		AuthKeys:            envList("SQRLL_AUTH_KEYS"),
+		KlipyAPIKey:         envStr("SQRLL_KLIPY_API_KEY", ""),
+		ServiceURL:          envStr("SQRLL_IMAGE_SERVICE_URL", ""),
+		CORSOrigins:         envList("SQRLL_CORS_ORIGINS"),
+		MaxRequestsPerHour:  envInt("MAX_REQUESTS_PER_HOUR", 100),
+		MaxDiskGB:           envInt64("MAX_DISK_GB", 100),
+		MaxRAMMB:            envInt64("MAX_RAM_MB", 1024),
+		MaxUploadMB:         envInt64("MAX_UPLOAD_MB", 8),
+		Port:                envInt("SQRLL_IMAGE_PORT", 8083),
+		ReadTimeoutSeconds:  envInt("SQRLL_READ_TIMEOUT_SECONDS", 30),
+		WriteTimeoutSeconds: envInt("SQRLL_WRITE_TIMEOUT_SECONDS", 60),
+		IdleTimeoutSeconds:  envInt("SQRLL_IDLE_TIMEOUT_SECONDS", 120),
 	}
 }
 

@@ -16,17 +16,39 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/cache"
 	"sqrll.net/squirrel-communicator-image/internal/config"
 	"sqrll.net/squirrel-communicator-image/internal/handlers"
+	"sqrll.net/squirrel-communicator-image/internal/singleflight"
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
-// corsMiddleware sets permissive CORS headers and answers preflight requests.
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SQRLL-API-KEY, X-SQRLL-IMAGE-API-KEY, X-API-Token")
+// corsMiddleware sets CORS headers only for explicitly allowed origins.
+// With no configured origins it emits no CORS headers (secure default for a
+// pure S2S service); a configured value of "*" allows any origin.
+func corsMiddleware(allowed []string, next http.Handler) http.Handler {
+	allowAll := false
+	allowSet := make(map[string]bool, len(allowed))
+	for _, o := range allowed {
+		if o == "*" {
+			allowAll = true
+		}
+		allowSet[o] = true
+	}
 
-		// Handle preflight OPTIONS requests
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+
+		if origin != "" && (allowAll || allowSet[origin]) {
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SQRLL-API-KEY, X-SQRLL-IMAGE-API-KEY, X-API-Token")
+		}
+
+		// Handle preflight OPTIONS requests. If the Origin was not allowed
+		// above, no CORS headers are present and the browser blocks the request.
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -44,6 +66,7 @@ func main() {
 	log.Printf("  RAM cache: %d MB", cfg.MaxRAMMB)
 	log.Printf("  Max upload: %d MB", cfg.MaxUploadMB)
 	log.Printf("  Rate limit: %d req/hour/key", cfg.MaxRequestsPerHour)
+	log.Printf("  CORS origins: %v", cfg.CORSOrigins)
 	if cfg.KlipyAPIKey != "" {
 		log.Printf("  GIF provider: configured")
 	} else {
@@ -83,6 +106,7 @@ func main() {
 	downloadHandler := &handlers.DownloadHandler{
 		Storage: store,
 		Cache:   c,
+		Load:    new(singleflight.Group),
 	}
 	keyHandler := &handlers.KeyHandler{
 		Auth:      authMgr,
@@ -109,8 +133,11 @@ func main() {
 	addr := net.JoinHostPort(cfg.ServiceURL, strconv.Itoa(cfg.Port))
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           corsMiddleware(mux),
+		Handler:           corsMiddleware(cfg.CORSOrigins, mux),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       time.Duration(cfg.ReadTimeoutSeconds) * time.Second,
+		WriteTimeout:      time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
+		IdleTimeout:       time.Duration(cfg.IdleTimeoutSeconds) * time.Second,
 	}
 
 	// Graceful shutdown: drain in-flight requests before exiting

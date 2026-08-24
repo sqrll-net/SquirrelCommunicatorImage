@@ -14,6 +14,13 @@ No database. No external dependencies. Just a filesystem and RAM.
 - **Anti-injection headers** — every download sends `X-Content-Type-Options: nosniff`.
   SVG (which can carry `<script>`) is always forced to download with a sandboxed CSP.
 - **OOM shield** — `http.MaxBytesReader` caps the body before any processing.
+- **SSRF protection** — the GIF fetch endpoint resolves a URL once at dial time and
+  rejects any non-globally-routable address (loopback, RFC1918, CGNAT, reserved and
+  documentation ranges), defeating DNS rebinding; redirects are never followed.
+- **Restricted CORS** — cross-origin requests are only allowed from explicitly
+  configured origins (`SQRLL_CORS_ORIGINS`); the default is to allow none.
+- **Master-key lockout** — key-management endpoints throttle after repeated failed
+  admin-auth attempts.
 
 ## Architecture
 
@@ -46,17 +53,18 @@ No database. No external dependencies. Just a filesystem and RAM.
 | 4. DEDUP       |              |           v           |
 | - os.Stat()    |              |   +-----------------+ |
 |   If exists:   |              |   | 5. COLD PATH    | |
-|   RETURN ID    |              |   | - os.ReadFile() | |
-+----------------+              |   | - sniff MIME    | |
-    | (new file)                |   +-----------------+ |
-    v                           |           |           |
-+----------------+              |           v           |
-| 6. COLD WRITE  |              |   +-----------------+ |
-| - tmp+rename   |              |   | 6. PROMOTION    | |
-| - atomic.Add() |              |   | - Lock()        | |
-| (quota check)  |              |   | - Add to RAM    | |
-+----------------+              |   | - Evict if full | |
-    |                           |   +-----------------+ |
+|   RETURN ID    |              |   | - singleflight  | |
++----------------+              |   | - os.ReadFile() | |
+    | (new file)                |   | - sniff MIME    | |
+    v                           |   +-----------------+ |
++----------------+              |           |           |
+| 6. COLD WRITE  |              |           v           |
+| - tmp+rename   |              |   +-----------------+ |
+| - atomic.Add() |              |   | 6. PROMOTION    | |
+| (quota check)  |              |   | - Lock()        | |
++----------------+              |   | - Add to RAM    | |
+    |                           |   | - Evict if full | |
+    v                           |   +-----------------+ |
     v                           v           v
 [ JSON: {id, status, type, size} ] [ Raw bytes + safe headers ]
 ```
@@ -64,17 +72,20 @@ No database. No external dependencies. Just a filesystem and RAM.
 ### Boot Sequence
 
 On startup, `filepath.WalkDir` scans the storage directory, rebuilds the in-memory
-extension map (`hash -> .ext`), and sums all file sizes into an `atomic.Int64` quota
-counter. No database sync needed. Takes milliseconds even for thousands of files.
+extension map (`hash -> .ext`), sums all file sizes into an `atomic.Int64` quota
+counter, and removes any orphaned `.tmp.*` files left by an unclean shutdown.
+No database sync needed. Takes milliseconds even for thousands of files.
 
 ### Cache Design
 
 Size-bounded (1GB default), not item-count-bounded. A 10KB icon and an 8MB video
 are treated fairly — the cache tracks total bytes, not file count.
 
-Reads use `RLock` only — no LRU mutation on Get. This means 500 concurrent requests
-for the same file all proceed in parallel without contention. The tradeoff is that
-eviction order is insertion order (FIFO), not true LRU.
+Reads use `RLock` for lock-free concurrency, then promote hits to the MRU position
+on a best-effort basis (`TryLock`), so eviction order approximates true LRU while
+concurrent readers never contend on a write lock. Cold-path misses are coalesced
+with singleflight, so N concurrent requests for an uncached file trigger exactly
+one disk read and one cache promotion.
 
 ### Deduplication
 
@@ -86,6 +97,9 @@ no quota hit.
 
 New files are written to a temp file with a random suffix, then atomically renamed
 into place. Crash at any point, and you either have the complete file or nothing.
+Orphaned temp files are swept at startup. Quota is reserved atomically (CAS) and
+the slow write+rename happens outside the extension-map lock, so concurrent
+uploads of different files don't serialize on disk I/O.
 
 ## Authentication & Key Management
 
@@ -208,7 +222,8 @@ Response 201:
   { "id": "<sha256>", "status": "ok", "type": "image/gif", "size": 12345 }
 
 Guards:
-  - SSRF guard (loopback/private/link-local/multicast/unspecified hosts rejected)
+  - SSRF guard (loopback/private/CGNAT/link-local/multicast/reserved hosts rejected,
+    validated once at dial time to defeat DNS rebinding)
   - http/https scheme only, redirects disabled
   - 8 MB download cap, ~25s upstream timeout
   - magic-byte content validation (same as uploads)
@@ -247,18 +262,22 @@ Response 200:
 
 ## Environment Variables
 
-| Variable                   | Default                  | Description                                         |
-|----------------------------|--------------------------|-----------------------------------------------------|
-| `STORAGE_PATH`             | `/var/data/sqrll/media`  | File storage directory                              |
-| `SQRLL_IMAGE_SERVICE_URL`  | (empty = all interfaces) | Address to bind the HTTP server to                 |
-| `SQRLL_IMAGE_PORT`         | `8083`                   | HTTP listen port                                    |
-| `SQRLL_IMAGE_API_KEY`      | (empty = disabled)       | Admin key for key management endpoints              |
-| `SQRLL_AUTH_KEYS`          | (empty)                  | Comma-separated bootstrap API keys                  |
-| `SQRLL_KLIPY_API_KEY`      | (empty = disabled)       | KLIPY app key for GIF endpoints (503 if empty)     |
-| `MAX_REQUESTS_PER_HOUR`    | `100`                    | Per-key rate limit (hourly window)                  |
-| `MAX_DISK_GB`              | `100`                    | Disk quota in GB                                    |
-| `MAX_RAM_MB`               | `1024`                   | RAM cache limit in MB                               |
-| `MAX_UPLOAD_MB`            | `8`                      | Max single upload size                              |
+| Variable                      | Default                  | Description                                         |
+|-------------------------------|--------------------------|-----------------------------------------------------|
+| `STORAGE_PATH`                | `/var/data/sqrll/media`  | File storage directory                              |
+| `SQRLL_IMAGE_SERVICE_URL`     | (empty = all interfaces) | Address to bind the HTTP server to                 |
+| `SQRLL_IMAGE_PORT`            | `8083`                   | HTTP listen port                                    |
+| `SQRLL_IMAGE_API_KEY`         | (empty = disabled)       | Admin key for key management endpoints              |
+| `SQRLL_AUTH_KEYS`             | (empty)                  | Comma-separated bootstrap API keys                  |
+| `SQRLL_KLIPY_API_KEY`         | (empty = disabled)       | KLIPY app key for GIF endpoints (503 if empty)     |
+| `SQRLL_CORS_ORIGINS`          | (empty = no CORS)        | Comma-separated allowed origins (`*` = any)         |
+| `MAX_REQUESTS_PER_HOUR`       | `100`                    | Per-key rate limit (hourly window)                  |
+| `MAX_DISK_GB`                 | `100`                    | Disk quota in GB                                    |
+| `MAX_RAM_MB`                  | `1024`                   | RAM cache limit in MB                               |
+| `MAX_UPLOAD_MB`               | `8`                      | Max single upload size                              |
+| `SQRLL_READ_TIMEOUT_SECONDS`  | `30`                     | Server read timeout (headers + body)                |
+| `SQRLL_WRITE_TIMEOUT_SECONDS` | `60`                     | Server write timeout (downloads)                    |
+| `SQRLL_IDLE_TIMEOUT_SECONDS`  | `120`                    | Keep-alive idle timeout                             |
 
 ## Allowed File Types
 
@@ -284,14 +303,17 @@ sqrll-go-files/
 │   ├── auth/
 │   │   └── manager.go       API key registry (hashed) + per-key rate limiting
 │   ├── cache/
-│   │   └── lru.go           RAM cache with size-bounded eviction
+│   │   └── lru.go           RAM cache with size-bounded, best-effort LRU eviction
 │   ├── config/
 │   │   └── env.go           Environment variable loading and defaults
 │   ├── handlers/
 │   │   ├── upload.go        POST handler: auth, rate limit, sniff, SHA-256, dedup
-│   │   ├── download.go      GET handler: cache-first, disk fallback, safe headers
+│   │   ├── download.go      GET handler: cache-first, singleflight disk fallback
 │   │   ├── keys.go          Key management endpoints (login/logout)
-│   │   └── gifs.go          KLIPY GIF proxy: search/trending/fetch
+│   │   ├── gifs.go          KLIPY GIF proxy: search/trending/fetch
+│   │   └── ssrf.go          SSRF guard: public-IP validation + safe dialer
+│   ├── singleflight/
+│   │   └── singleflight.go  Duplicate-suppressed concurrent work
 │   ├── sniff/
 │   │   └── sniff.go         Magic-byte content detection
 │   └── storage/
@@ -321,8 +343,10 @@ it (e.g. `SQRLL_IMAGE_PORT=9090` requires `-p 9090:9090`).
 ## Key Properties
 
 - **Stateless.** Restart the container and it rebuilds all state from disk in under a second.
-- **Self-healing.** Boot scan recovers the full index. Empty cache, full disk state — ready immediately.
-- **Dogpile-safe.** 500 concurrent requests for the same file: 1 disk read, 499 RAM hits. All under RLock.
+- **Self-healing.** Boot scan recovers the full index and cleans orphaned temp files.
+  Empty cache, full disk state — ready immediately.
+- **Dogpile-safe.** 500 concurrent requests for the same file: 1 disk read (singleflight
+  coalesces cold misses), 499 RAM hits. Hot-path reads all run under `RLock`.
 - **Horizontally scalable.** No shared state between instances. Spin up another container with its own volume.
-  (Note: per-key rate limits are in-memory and therefore per-instance.)
+  (Note: per-key rate limits and the master-key lockout are in-memory and therefore per-instance.)
 - **Zero dependencies.** Standard library only. No CGO. Minimal attack surface.
