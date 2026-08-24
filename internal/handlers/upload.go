@@ -17,7 +17,7 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
-/** UploadHandler handles POST /api/image/upload for file ingestion. */
+// UploadHandler handles POST /api/image/upload for file ingestion.
 type UploadHandler struct {
 	Storage  *storage.Manager
 	Cache    *cache.Cache
@@ -25,7 +25,7 @@ type UploadHandler struct {
 	MaxBytes int64
 }
 
-/** uploadResponse is the JSON payload returned after a successful upload. */
+// uploadResponse is the JSON payload returned after a successful upload.
 type uploadResponse struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
@@ -33,14 +33,14 @@ type uploadResponse struct {
 	Size   int64  `json:"size"`
 }
 
-/** errorResponse is the JSON payload returned on any error. */
+// errorResponse is the JSON payload returned on any error.
 type errorResponse struct {
 	Error string `json:"error"`
 	Code  int    `json:"code"`
 }
 
-/** ServeHTTP implements http.Handler with auth, rate limiting, content
- *  validation, dedup, and storage. */
+// ServeHTTP implements http.Handler with auth, rate limiting, content
+// validation, dedup, and storage.
 func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -124,14 +124,14 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-/** writeJSON serializes a struct to JSON and writes it to the response. */
+// writeJSON serializes a struct to JSON and writes it to the response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-/** writeError sends a JSON error response. */
+// writeError sends a JSON error response.
 func writeError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

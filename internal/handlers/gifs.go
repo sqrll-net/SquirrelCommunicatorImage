@@ -29,7 +29,7 @@ const (
 	fetchTimeout = 25 * time.Second
 )
 
-/** GifsHandler proxies KLIPY GIF search/trending and fetches remote GIFs for re-upload. */
+// GifsHandler proxies KLIPY GIF search/trending and fetches remote GIFs for re-upload.
 type GifsHandler struct {
 	Auth     *auth.Manager
 	KlipyKey string
@@ -40,7 +40,7 @@ type GifsHandler struct {
 	fetcher *http.Client // remote GIF fetch (25s timeout, no redirects)
 }
 
-/** NewGifsHandler builds a GifsHandler with its two HTTP clients. */
+// NewGifsHandler builds a GifsHandler with its two HTTP clients.
 func NewGifsHandler(authMgr *auth.Manager, klipyKey string, store *storage.Manager, c *cache.Cache) *GifsHandler {
 	return &GifsHandler{
 		Auth:     authMgr,
@@ -58,7 +58,7 @@ func NewGifsHandler(authMgr *auth.Manager, klipyKey string, store *storage.Manag
 	}
 }
 
-/** ServeHTTP implements http.Handler for /api/gifs/*. */
+// ServeHTTP implements http.Handler for /api/gifs/*.
 func (h *GifsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -97,7 +97,7 @@ func (h *GifsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-/** extractKey accepts the key from X-SQRLL-API-KEY first, then X-API-Token. */
+// extractKey accepts the key from X-SQRLL-API-KEY first, then X-API-Token.
 func (h *GifsHandler) extractKey(r *http.Request) string {
 	if k := r.Header.Get("X-SQRLL-API-KEY"); k != "" {
 		return k
@@ -105,7 +105,7 @@ func (h *GifsHandler) extractKey(r *http.Request) string {
 	return r.Header.Get("X-API-Token")
 }
 
-/** handleSearch proxies GET /api/gifs/search. */
+// handleSearch proxies GET /api/gifs/search.
 func (h *GifsHandler) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
@@ -125,7 +125,7 @@ func (h *GifsHandler) handleSearch(w http.ResponseWriter, r *http.Request) {
 	h.proxyKlipy(w, "gifs/search", query)
 }
 
-/** handleTrending proxies GET /api/gifs/trending. */
+// handleTrending proxies GET /api/gifs/trending.
 func (h *GifsHandler) handleTrending(w http.ResponseWriter, r *http.Request) {
 	limit := clampInt(r.URL.Query().Get("limit"), 25, 1, 50)
 	page := clampInt(r.URL.Query().Get("page"), 1, 1, 1000)
@@ -138,7 +138,7 @@ func (h *GifsHandler) handleTrending(w http.ResponseWriter, r *http.Request) {
 	h.proxyKlipy(w, "gifs/trending", query)
 }
 
-/** handleFetch downloads a remote GIF (SSRF-guarded) and re-uploads it into storage. */
+// handleFetch downloads a remote GIF (SSRF-guarded) and re-uploads it into storage.
 func (h *GifsHandler) handleFetch(w http.ResponseWriter, r *http.Request) {
 	rawURL := strings.TrimSpace(r.URL.Query().Get("url"))
 	if rawURL == "" {
@@ -222,7 +222,7 @@ func (h *GifsHandler) handleFetch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-/** proxyKlipy calls the KLIPY upstream and normalizes the envelope into the frontend shape. */
+// proxyKlipy calls the KLIPY upstream and normalizes the envelope into the frontend shape.
 func (h *GifsHandler) proxyKlipy(w http.ResponseWriter, path string, query url.Values) {
 	body, err := klipyGet(h.KlipyKey, path, query, h.klipy)
 	if err != nil {
@@ -244,8 +244,8 @@ func (h *GifsHandler) proxyKlipy(w http.ResponseWriter, path string, query url.V
 	})
 }
 
-/** klipyGet performs a GET against the KLIPY API and returns the raw body.
- *  The key is embedded in the URL path server-side and never returned or logged. */
+// klipyGet performs a GET against the KLIPY API and returns the raw body.
+// The key is embedded in the URL path server-side and never returned or logged.
 func klipyGet(key, path string, query url.Values, client *http.Client) ([]byte, error) {
 	u := fmt.Sprintf("%s/api/v1/%s/%s", klipyBaseURL, url.PathEscape(key), path)
 	if len(query) > 0 {
@@ -269,7 +269,7 @@ func klipyGet(key, path string, query url.Values, client *http.Client) ([]byte, 
 	return body, nil
 }
 
-/** isPublicHost reports whether a hostname resolves only to public IPs. */
+// isPublicHost reports whether a hostname resolves only to public IPs.
 func isPublicHost(host string) bool {
 	addrs, err := net.LookupIP(host)
 	if err != nil || len(addrs) == 0 {
@@ -284,7 +284,7 @@ func isPublicHost(host string) bool {
 	return true
 }
 
-/** clampInt parses s as an int clamped to [min, max], falling back to def when empty/invalid. */
+// clampInt parses s as an int clamped to [min, max], falling back to def when empty/invalid.
 func clampInt(s string, def, min, max int) int {
 	if s == "" {
 		return def
@@ -358,7 +358,7 @@ type gifRendition struct {
 	Height int    `json:"height"`
 }
 
-/** normalizeGifs skips ads and items without a usable GIF, and selects renditions. */
+// normalizeGifs skips ads and items without a usable GIF, and selects renditions.
 func normalizeGifs(items []klipyMedia) []gifResult {
 	results := make([]gifResult, 0, len(items))
 	for _, it := range items {
@@ -381,7 +381,7 @@ func normalizeGifs(items []klipyMedia) []gifResult {
 	return results
 }
 
-/** pickGif picks the gif rendition from sizes md > sm > hd > xs. */
+// pickGif picks the gif rendition from sizes md > sm > hd > xs.
 func pickGif(f map[string]klipyRenditionSet) *gifRendition {
 	for _, size := range []string{"md", "sm", "hd", "xs"} {
 		if rs, ok := f[size]; ok && rs.GIF != nil && rs.GIF.URL != "" {
@@ -391,7 +391,7 @@ func pickGif(f map[string]klipyRenditionSet) *gifRendition {
 	return nil
 }
 
-/** pickMP4 picks the mp4 rendition from sizes md > sm > hd > xs; nil if absent. */
+// pickMP4 picks the mp4 rendition from sizes md > sm > hd > xs; nil if absent.
 func pickMP4(f map[string]klipyRenditionSet) *gifRendition {
 	for _, size := range []string{"md", "sm", "hd", "xs"} {
 		if rs, ok := f[size]; ok && rs.MP4 != nil && rs.MP4.URL != "" {
@@ -401,7 +401,7 @@ func pickMP4(f map[string]klipyRenditionSet) *gifRendition {
 	return nil
 }
 
-/** pickPreview picks a static rendition (webp > jpg > png > gif) from sm > md > xs > hd. */
+// pickPreview picks a static rendition (webp > jpg > png > gif) from sm > md > xs > hd.
 func pickPreview(f map[string]klipyRenditionSet) *gifRendition {
 	for _, size := range []string{"sm", "md", "xs", "hd"} {
 		rs, ok := f[size]

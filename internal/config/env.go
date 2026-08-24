@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-/** AllowedMIMETypes lists the MIME types accepted for upload. */
+// AllowedMIMETypes lists the MIME types accepted for upload.
 var AllowedMIMETypes = map[string]bool{
 	"image/jpeg":      true,
 	"image/png":       true,
@@ -25,7 +25,7 @@ var AllowedMIMETypes = map[string]bool{
 	"application/pdf": true,
 }
 
-/** Config holds all runtime configuration loaded from environment variables. */
+// Config holds all runtime configuration loaded from environment variables.
 type Config struct {
 	StoragePath        string
 	MasterKey          string
@@ -39,7 +39,7 @@ type Config struct {
 	Port               int
 }
 
-/** Load reads configuration from environment variables with sensible defaults. */
+// Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	return &Config{
 		StoragePath:        envStr("STORAGE_PATH", "/var/data/sqrll/media"),
@@ -55,7 +55,7 @@ func Load() *Config {
 	}
 }
 
-/** envList reads a comma-separated list from the given variable. */
+// envList reads a comma-separated list from the given variable.
 func envList(name string) []string {
 	var keys []string
 	if v := os.Getenv(name); v != "" {

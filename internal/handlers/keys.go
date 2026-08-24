@@ -7,13 +7,13 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/auth"
 )
 
-/** KeyHandler manages API key registration and revocation via S2S admin endpoints. */
+// KeyHandler manages API key registration and revocation via S2S admin endpoints.
 type KeyHandler struct {
 	Auth      *auth.Manager
 	MasterKey string
 }
 
-/** ServeHTTP routes key management requests by HTTP method. */
+// ServeHTTP routes key management requests by HTTP method.
 func (h *KeyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
@@ -25,7 +25,7 @@ func (h *KeyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-/** authorizeMaster verifies the admin key required for key management. */
+// authorizeMaster verifies the admin key required for key management.
 func (h *KeyHandler) authorizeMaster(w http.ResponseWriter, r *http.Request) bool {
 	if h.MasterKey == "" {
 		writeError(w, "key management disabled", http.StatusForbidden)
@@ -40,7 +40,7 @@ func (h *KeyHandler) authorizeMaster(w http.ResponseWriter, r *http.Request) boo
 	return true
 }
 
-/** addKey generates and registers a new API key, returning the plaintext once. */
+// addKey generates and registers a new API key, returning the plaintext once.
 func (h *KeyHandler) addKey(w http.ResponseWriter, r *http.Request) {
 	if !h.authorizeMaster(w, r) {
 		return
@@ -54,7 +54,7 @@ func (h *KeyHandler) addKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"key": key})
 }
 
-/** removeKey revokes an API key identified by the X-SQRLL-API-KEY header. */
+// removeKey revokes an API key identified by the X-SQRLL-API-KEY header.
 func (h *KeyHandler) removeKey(w http.ResponseWriter, r *http.Request) {
 	if !h.authorizeMaster(w, r) {
 		return

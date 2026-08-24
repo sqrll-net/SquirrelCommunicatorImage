@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -18,7 +19,7 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
-/** corsMiddleware sets permissive CORS headers and answers preflight requests. */
+// corsMiddleware sets permissive CORS headers and answers preflight requests.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -127,7 +128,7 @@ func main() {
 	}()
 
 	log.Printf("Listening on %s", addr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Server error: %v", err)
 	}
 }

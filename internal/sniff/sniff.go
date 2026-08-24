@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-/** Detect returns the MIME type of data by inspecting leading magic bytes.
- *  Unlike http.DetectContentType, it correctly identifies SVG, WebP, and the
- *  MP4/WebM/Ogg container formats. Unknown content yields application/octet-stream. */
+// Detect returns the MIME type of data by inspecting leading magic bytes.
+// Unlike http.DetectContentType, it correctly identifies SVG, WebP, and the
+// MP4/WebM/Ogg container formats. Unknown content yields application/octet-stream.
 func Detect(data []byte) string {
 	n := len(data)
 	if n == 0 {
@@ -57,8 +57,8 @@ func Detect(data []byte) string {
 	return "application/octet-stream"
 }
 
-/** looksLikeSVG reports whether data begins with an <svg> root or an XML
- *  declaration immediately followed by an <svg> element. */
+// looksLikeSVG reports whether data begins with an <svg> root or an XML
+// declaration immediately followed by an <svg> element.
 func looksLikeSVG(data []byte) bool {
 	if len(data) > 1024 {
 		data = data[:1024]

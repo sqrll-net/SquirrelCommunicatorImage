@@ -11,13 +11,13 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
-/** DownloadHandler handles GET /api/image/{hash} for file retrieval. */
+// DownloadHandler handles GET /api/image/{hash} for file retrieval.
 type DownloadHandler struct {
 	Storage *storage.Manager
 	Cache   *cache.Cache
 }
 
-/** ServeHTTP implements http.Handler. Checks RAM cache first (RLock), falls back to disk. */
+// ServeHTTP implements http.Handler. Checks RAM cache first (RLock), falls back to disk.
 func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -68,7 +68,7 @@ func (h *DownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-/** setDownloadHeaders applies anti-injection headers and forces risky types to download. */
+// setDownloadHeaders applies anti-injection headers and forces risky types to download.
 func setDownloadHeaders(w http.ResponseWriter, mimeType string) {
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -80,7 +80,7 @@ func setDownloadHeaders(w http.ResponseWriter, mimeType string) {
 	}
 }
 
-/** validHash reports whether s is a 64-char lowercase/uppercase hex string. */
+// validHash reports whether s is a 64-char lowercase/uppercase hex string.
 func validHash(s string) bool {
 	if len(s) != 64 {
 		return false

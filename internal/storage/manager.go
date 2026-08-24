@@ -16,7 +16,7 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/cache"
 )
 
-/** Manager handles disk-level file operations: boot scan, writes, reads, quota. */
+// Manager handles disk-level file operations: boot scan, writes, reads, quota.
 type Manager struct {
 	basePath  string
 	maxSize   int64             // max total bytes allowed on disk
@@ -26,7 +26,7 @@ type Manager struct {
 	mu        sync.RWMutex // protects extMap and serializes writes
 }
 
-/** New creates a Storage Manager, scans the base path on startup to rebuild state. */
+// New creates a Storage Manager, scans the base path on startup to rebuild state.
 func New(basePath string, maxSize int64, c *cache.Cache) (*Manager, error) {
 	m := &Manager{
 		basePath: basePath,
@@ -47,7 +47,7 @@ func New(basePath string, maxSize int64, c *cache.Cache) (*Manager, error) {
 	return m, nil
 }
 
-/** bootScan walks the storage directory to rebuild the extension map and total size. */
+// bootScan walks the storage directory to rebuild the extension map and total size.
 func (m *Manager) bootScan() error {
 	return filepath.WalkDir(m.basePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -76,7 +76,7 @@ func (m *Manager) bootScan() error {
 	})
 }
 
-/** Exists checks whether a file with the given hash already exists on disk. */
+// Exists checks whether a file with the given hash already exists on disk.
 func (m *Manager) Exists(hash string) bool {
 	m.mu.RLock()
 	ext, ok := m.extMap[hash]
@@ -89,8 +89,8 @@ func (m *Manager) Exists(hash string) bool {
 	return err == nil
 }
 
-/** Write persists file bytes to disk. Serialized via mutex to prevent races on quota/extMap.
- *  Returns nil if the file already exists (dedup). */
+// Write persists file bytes to disk. Serialized via mutex to prevent races on quota/extMap.
+// Returns nil if the file already exists (dedup).
 func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,7 +134,7 @@ func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 	return nil
 }
 
-/** Read loads a file from disk by hash. MIME type is derived by the caller. */
+// Read loads a file from disk by hash. MIME type is derived by the caller.
 func (m *Manager) Read(hash string) ([]byte, error) {
 	m.mu.RLock()
 	ext, ok := m.extMap[hash]
@@ -151,12 +151,12 @@ func (m *Manager) Read(hash string) ([]byte, error) {
 	return data, nil
 }
 
-/** TotalSize returns the current disk usage in bytes. */
+// TotalSize returns the current disk usage in bytes.
 func (m *Manager) TotalSize() int64 {
 	return m.totalSize.Load()
 }
 
-/** mimeTypeToExt returns the file extension for a MIME type (including the leading dot). */
+// mimeTypeToExt returns the file extension for a MIME type (including the leading dot).
 func mimeTypeToExt(mimeType string) string {
 	exts, err := mime.ExtensionsByType(mimeType)
 	if err != nil || len(exts) == 0 {
@@ -173,7 +173,7 @@ func mimeTypeToExt(mimeType string) string {
 	return exts[0]
 }
 
-/** RemoveFile deletes a file from disk and the extension map (for administrative use). */
+// RemoveFile deletes a file from disk and the extension map (for administrative use).
 func (m *Manager) RemoveFile(hash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -200,7 +200,7 @@ func (m *Manager) RemoveFile(hash string) error {
 	return nil
 }
 
-/** randomSuffix generates a short random hex string for temp file names. */
+// randomSuffix generates a short random hex string for temp file names.
 func randomSuffix(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

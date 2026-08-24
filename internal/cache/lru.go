@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-/** entry represents a single cached file: raw bytes, MIME type, and metadata. */
+// entry represents a single cached file: raw bytes, MIME type, and metadata.
 type entry struct {
 	key      string
 	data     []byte
@@ -13,8 +13,8 @@ type entry struct {
 	size     int64
 }
 
-/** Cache is a size-bounded in-memory LRU store. Eviction is based on insertion order.
- *  Reads use RLock for maximum concurrency; only writes mutate the LRU list. */
+// Cache is a size-bounded in-memory LRU store. Eviction is based on insertion order.
+// Reads use RLock for maximum concurrency; only writes mutate the LRU list.
 type Cache struct {
 	mu          sync.RWMutex
 	items       map[string]*list.Element
@@ -23,7 +23,7 @@ type Cache struct {
 	currentSize int64
 }
 
-/** New creates a Cache with the given maximum size in bytes. */
+// New creates a Cache with the given maximum size in bytes.
 func New(maxSize int64) *Cache {
 	return &Cache{
 		items:   make(map[string]*list.Element),
@@ -32,8 +32,8 @@ func New(maxSize int64) *Cache {
 	}
 }
 
-/** Get retrieves a file from cache. Returns (data, mimeType, ok).
- *  Uses RLock -- does NOT update LRU order for maximum read throughput. */
+// Get retrieves a file from cache. Returns (data, mimeType, ok).
+// Uses RLock -- does NOT update LRU order for maximum read throughput.
 func (c *Cache) Get(key string) ([]byte, string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -46,7 +46,7 @@ func (c *Cache) Get(key string) ([]byte, string, bool) {
 	return ent.data, ent.mimeType, true
 }
 
-/** Put stores file bytes and MIME type in cache, evicting old entries if needed. */
+// Put stores file bytes and MIME type in cache, evicting old entries if needed.
 func (c *Cache) Put(key string, data []byte, mimeType string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -74,8 +74,8 @@ func (c *Cache) Put(key string, data []byte, mimeType string) {
 	c.evictLocked()
 }
 
-/** evictLocked removes entries from the back of the LRU list until usage is under maxSize.
- *  Must be called while c.mu is held (write lock). */
+// evictLocked removes entries from the back of the LRU list until usage is under maxSize.
+// Must be called while c.mu is held (write lock).
 func (c *Cache) evictLocked() {
 	for c.currentSize > c.maxSize && c.lruList.Len() > 0 {
 		elem := c.lruList.Back()
@@ -89,7 +89,7 @@ func (c *Cache) evictLocked() {
 	}
 }
 
-/** Remove deletes a specific key from cache (used when a file is deleted from disk). */
+// Remove deletes a specific key from cache (used when a file is deleted from disk).
 func (c *Cache) Remove(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -102,14 +102,14 @@ func (c *Cache) Remove(key string) {
 	}
 }
 
-/** Len returns the number of items currently in cache. */
+// Len returns the number of items currently in cache.
 func (c *Cache) Len() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.lruList.Len()
 }
 
-/** CurrentSize returns total bytes currently stored in cache. */
+// CurrentSize returns total bytes currently stored in cache.
 func (c *Cache) CurrentSize() int64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
