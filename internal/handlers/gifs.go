@@ -164,7 +164,7 @@ func (h *GifsHandler) handleFetch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "upstream fetch failed", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// 8 MB cap: read one extra byte to detect oversized content.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxGifBytes+1))
@@ -257,7 +257,7 @@ func klipyGet(key, path string, query url.Values, client *http.Client) ([]byte, 
 		// Do NOT wrap err: it contains the URL (which embeds the key).
 		return nil, errors.New("upstream request failed")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxGifBytes))
 	if err != nil {

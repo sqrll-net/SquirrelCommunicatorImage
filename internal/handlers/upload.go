@@ -64,7 +64,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// OOM shield: limit body size
 	r.Body = http.MaxBytesReader(w, r.Body, h.MaxBytes)
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -128,12 +128,12 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 /** writeError sends a JSON error response. */
 func writeError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(errorResponse{Error: msg, Code: code})
+	_ = json.NewEncoder(w).Encode(errorResponse{Error: msg, Code: code})
 }

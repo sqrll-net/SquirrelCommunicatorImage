@@ -110,7 +110,11 @@ func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 	}
 
 	filePath := filepath.Join(m.basePath, hash+ext)
-	tmpPath := filePath + ".tmp." + randomSuffix(8)
+	suffix, err := randomSuffix(8)
+	if err != nil {
+		return fmt.Errorf("generate temp name: %w", err)
+	}
+	tmpPath := filePath + ".tmp." + suffix
 
 	// Write to temp file first
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
@@ -119,7 +123,7 @@ func (m *Manager) Write(hash string, data []byte, mimeType string) error {
 
 	// Atomic rename into place
 	if err := os.Rename(tmpPath, filePath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 
@@ -197,8 +201,10 @@ func (m *Manager) RemoveFile(hash string) error {
 }
 
 /** randomSuffix generates a short random hex string for temp file names. */
-func randomSuffix(n int) string {
+func randomSuffix(n int) (string, error) {
 	b := make([]byte, n)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
