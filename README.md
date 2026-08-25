@@ -17,8 +17,10 @@ No database. No external dependencies. Just a filesystem and RAM.
 - **SSRF protection** — the GIF fetch endpoint resolves a URL once at dial time and
   rejects any non-globally-routable address (loopback, RFC1918, CGNAT, reserved and
   documentation ranges), defeating DNS rebinding; redirects are never followed.
-- **Restricted CORS** — cross-origin requests are only allowed from explicitly
-  configured origins (`SQRLL_CORS_ORIGINS`); the default is to allow none.
+- **Restricted CORS** — cross-origin requests are allowed from loopback origins
+  (localhost/127.0.0.1/[::1]) for local browser testing, plus any explicitly
+  configured origins (`SQRLL_CORS_ORIGINS`); remote origins are denied by default.
+  A configured value of `*` allows any origin.
 - **Master-key lockout** — key-management endpoints throttle after repeated failed
   admin-auth attempts.
 
@@ -270,7 +272,7 @@ Response 200:
 | `SQRLL_IMAGE_API_KEY`         | (empty = disabled)       | Admin key for key management endpoints              |
 | `SQRLL_AUTH_KEYS`             | (empty)                  | Comma-separated bootstrap API keys                  |
 | `SQRLL_KLIPY_API_KEY`         | (empty = disabled)       | KLIPY app key for GIF endpoints (503 if empty)     |
-| `SQRLL_CORS_ORIGINS`          | (empty = no CORS)        | Comma-separated allowed origins (`*` = any)         |
+| `SQRLL_CORS_ORIGINS`          | (empty = no remote CORS) | Comma-separated allowed origins (`*` = any)         |
 | `MAX_REQUESTS_PER_HOUR`       | `100`                    | Per-key rate limit (hourly window)                  |
 | `MAX_DISK_GB`                 | `100`                    | Disk quota in GB                                    |
 | `MAX_RAM_MB`                  | `1024`                   | RAM cache limit in MB                               |
@@ -326,6 +328,17 @@ sqrll-go-files/
 
 ```bash
 go build -o server ./cmd/api
+./server
+```
+
+### Local development
+
+Loopback CORS origins (localhost/127.0.0.1/[::1] on any port) are always allowed,
+so a frontend served from `http://localhost:3000` can call the API directly with no
+extra configuration. The bundled GoLand run configuration "Debug (localhost CORS)"
+uses a project-local storage path (`.data/media`) for a zero-setup debug session:
+
+```bash
 ./server
 ```
 

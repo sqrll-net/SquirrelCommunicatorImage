@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -20,9 +21,10 @@ import (
 	"sqrll.net/squirrel-communicator-image/internal/storage"
 )
 
-// corsMiddleware sets CORS headers only for explicitly allowed origins.
-// With no configured origins it emits no CORS headers (secure default for a
-// pure S2S service); a configured value of "*" allows any origin.
+// corsMiddleware sets CORS headers for loopback origins (localhost/127.0.0.1/::1),
+// any explicitly configured origin, or any origin when "*" is configured. Loopback
+// origins are always allowed so local browser testing works out of the box;
+// remote origins are only allowed when listed in SQRLL_CORS_ORIGINS (or via "*").
 func corsMiddleware(allowed []string, next http.Handler) http.Handler {
 	allowAll := false
 	allowSet := make(map[string]bool, len(allowed))
@@ -36,7 +38,7 @@ func corsMiddleware(allowed []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 
-		if origin != "" && (allowAll || allowSet[origin]) {
+		if origin != "" && (allowAll || allowSet[origin] || isLocalhostOrigin(origin)) {
 			if allowAll {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			} else {
@@ -56,6 +58,21 @@ func corsMiddleware(allowed []string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLocalhostOrigin reports whether the Origin header points at a loopback host
+// (localhost, 127.0.0.1, or ::1). Loopback origins are always allowed so local
+// browser testing works without opening CORS to arbitrary remote origins.
+func isLocalhostOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 func main() {
