@@ -262,6 +262,18 @@ Response 200:
   {"status": "ok"}
 ```
 
+### GET /instance
+
+Returns the running instance's unique identifier — a random 32-character
+Base62 hash, regenerated on every process start and never persisted. Like
+`/health`, this endpoint is unauthenticated (the ID is a non-secret
+operational identifier, not authentication material).
+
+```
+Response 200:
+  { "instanceId": "7k2QnXp4wR9vT0cL5mY3aB8dE1fG6hJ" }
+```
+
 ## Environment Variables
 
 | Variable                      | Default                  | Description                                         |
@@ -313,6 +325,7 @@ sqrll-go-files/
 │   │   ├── download.go      GET handler: cache-first, singleflight disk fallback
 │   │   ├── keys.go          Key management endpoints (login/logout)
 │   │   ├── gifs.go          KLIPY GIF proxy: search/trending/fetch
+│   │   ├── instance.go      Instance ID generator + /instance endpoint
 │   │   └── ssrf.go          SSRF guard: public-IP validation + safe dialer
 │   ├── singleflight/
 │   │   └── singleflight.go  Duplicate-suppressed concurrent work

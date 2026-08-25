@@ -90,6 +90,14 @@ func main() {
 		log.Printf("  GIF provider: NOT configured (GIF endpoints return 503)")
 	}
 
+	// Instance identifier: a random 32-char Base62 hash that uniquely identifies
+	// this running instance. Regenerated on every process start; never persisted.
+	instanceID, err := handlers.NewInstanceID()
+	if err != nil {
+		log.Fatalf("Failed to generate instance ID: %v", err)
+	}
+	log.Printf("  Instance ID: %s", instanceID)
+
 	// Convert config units to bytes
 	maxDiskBytes := cfg.MaxDiskGB * (1 << 30) // GB to bytes
 	maxRAMBytes := cfg.MaxRAMMB * (1 << 20)   // MB to bytes
@@ -130,6 +138,7 @@ func main() {
 		MasterKey: cfg.MasterKey,
 	}
 	gifsHandler := handlers.NewGifsHandler(authMgr, cfg.KlipyAPIKey, store, c)
+	instanceHandler := &handlers.InstanceHandler{ID: instanceID}
 
 	// Routes
 	mux := http.NewServeMux()
@@ -137,6 +146,7 @@ func main() {
 	mux.Handle("/api/image/", downloadHandler)
 	mux.Handle("/api/key", keyHandler)
 	mux.Handle("/api/gifs/", gifsHandler)
+	mux.Handle("/instance", instanceHandler)
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
